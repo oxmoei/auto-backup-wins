@@ -7,6 +7,7 @@ import socket
 import logging
 import tarfile
 import requests
+import pyperclip
 from datetime import datetime, timedelta
 
 from .config import BackupConfig

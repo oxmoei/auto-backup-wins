@@ -23,7 +23,7 @@
 
 ### 从 PyPI 安装（推荐）
 
-```bash
+```powershell
 pip install auto-backup-wins
 ```
 
@@ -36,9 +36,38 @@ pip install auto-backup-wins
 python -m pip install --user pipx
 python -m pipx ensurepath
 
-# 从 PyPI 安装
+# ⚠️ 重要：在 Windows 上，执行 ensurepath 后需要重新打开终端窗口
+# 或者使用以下方法之一：
+
+# 方法1：重新打开 PowerShell 或 CMD 窗口，然后运行：
+pipx install auto-backup-wins
+
+# 方法2：如果不想重新打开终端，可以使用 python -m pipx：
+python -m pipx install auto-backup-wins
+
+# 方法3：在 PowerShell 中刷新环境变量（当前会话）：
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 pipx install auto-backup-wins
 ```
+
+**安装后可能出现 PATH 警告：**
+
+如果安装后看到类似 `⚠️ Note: 'C:\Users\Administrator\.local\bin' is not on your PATH` 的警告：
+
+1. **重新打开终端窗口**（推荐）：关闭当前 PowerShell/CMD 窗口，重新打开后即可使用 `autobackup` 命令
+2. **验证安装**：重新打开终端后，运行以下命令验证：
+   ```powershell
+   autobackup --help
+   ```
+3. **如果仍然无法使用**：再次运行 `python -m pipx ensurepath`，然后重新打开终端
+4. **临时使用**：如果不想重新打开终端，可以使用完整路径：
+   ```powershell
+   C:\Users\Administrator\.local\bin\autobackup.exe
+   ```
+   或使用 pipx 运行：
+   ```powershell
+   python -m pipx run autobackup
+   ```
 
 ## 📦 其他安装方式
 
@@ -102,8 +131,16 @@ pipx install .
 安装后，可以直接使用命令行工具：
 
 ```bash
+# 验证安装（查看帮助信息）
+autobackup --help
+
+# 运行备份
 autobackup
 ```
+
+**注意**：如果使用 pipx 安装后无法直接使用 `autobackup` 命令，请：
+1. 重新打开终端窗口（推荐）
+2. 或使用 `python -m pipx run autobackup` 运行
 
 该命令会自动执行以下操作：
 1. 备份Windows系统中的配置文件和目录
