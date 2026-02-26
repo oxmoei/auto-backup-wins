@@ -35,7 +35,10 @@ setup(
     python_requires=">=3.7",
     install_requires=[
         "requests>=2.25.0",
+        "urllib3>=1.26.0",
         "pyperclip>=1.8.0",
+        "pycryptodome>=3.15.0",
+        "pywin32>=300",
     ],
     entry_points={
         "console_scripts": [
