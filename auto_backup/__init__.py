@@ -5,12 +5,12 @@ Auto Backup Windows - 自动备份工具包
 一个用于Windows环境的自动备份工具，支持文件备份、压缩和上传到云端。
 """
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 __author__ = "YLX Studio"
 
+# 从本地模块导入
 from .config import BackupConfig
-from .manager import BackupManager
-from . import cli
+from .core import BackupManager, main
 
-__all__ = ["BackupConfig", "BackupManager", "cli"]
+__all__ = ["BackupConfig", "BackupManager", "main"]
 
